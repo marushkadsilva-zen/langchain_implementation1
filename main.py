@@ -21,6 +21,7 @@ load_dotenv()
 conn = sqlite3.connect("chat_history.db")
 cursor = conn.cursor()
 
+# Long-Term Memory Table
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS chat_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,14 +30,30 @@ CREATE TABLE IF NOT EXISTS chat_history (
     timestamp TEXT
 )
 """)
+
+# Short-Term Memory Table 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS short_term_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    role TEXT,
+    message TEXT,
+    timestamp TEXT
+)
+""")
+
 conn.commit()
 
+
+# ==============================
+# LONG TERM MEMORY FUNCTIONS
+# ==============================
 def save_message(role, message):
     cursor.execute(
         "INSERT INTO chat_history (role, message, timestamp) VALUES (?, ?, ?)",
         (role, message, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     )
     conn.commit()
+
 
 def load_long_memory(limit=5):
     cursor.execute(
@@ -46,6 +63,42 @@ def load_long_memory(limit=5):
     rows = cursor.fetchall()
     return "\n".join([f"{r[0].upper()}: {r[1]}" for r in rows])
 
+
+# ==============================
+# SHORT TERM MEMORY FUNCTIONS
+# ==============================
+def save_short_term(role, message):
+    """
+    Save only last 3 AI responses in short-term memory table
+    """
+
+    cursor.execute(
+        "INSERT INTO short_term_memory (role, message, timestamp) VALUES (?, ?, ?)",
+        (role, message, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    )
+    conn.commit()
+
+    # Keep only last 3 entries
+    cursor.execute("""
+        DELETE FROM short_term_memory
+        WHERE id NOT IN (
+            SELECT id FROM short_term_memory
+            ORDER BY id DESC
+            LIMIT 3
+        )
+    """)
+    conn.commit()
+
+
+def load_short_memory():
+    cursor.execute("""
+        SELECT role, message FROM short_term_memory
+        ORDER BY id ASC
+    """)
+    rows = cursor.fetchall()
+    return "\n".join([f"{r[0].upper()}: {r[1]}" for r in rows])
+
+
 def view_history():
     print("\n===== DATABASE CHAT HISTORY =====")
     cursor.execute("SELECT role, message, timestamp FROM chat_history")
@@ -53,11 +106,12 @@ def view_history():
     for row in rows:
         print(f"[{row[2]}] {row[0].upper()}: {row[1]}")
 
+
 # ==============================
 # Create LLM
 # ==============================
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",  
+    model="gemini-2.5-flash",
     temperature=0.7,
     max_tokens=3000
 )
@@ -108,7 +162,6 @@ prompt = PromptTemplate(
 )
 
 chain = prompt | llm | parser
-
 response = chain.invoke({"cuisine": "Indian"})
 print("Simple Chain Output:", response)
 
@@ -139,24 +192,23 @@ print("Menu:", menu)
 
 
 # ==============================
-# MEMORY STACK CONVERSATION (FIXED)
+# MEMORY STACK CONVERSATION
 # ==============================
 print("\n===== MEMORY STACK CONVERSATION =====")
 
 system_prompt = "You are an expert Indian restaurant consultant."
 core_memory = "Always give premium, creative and business-friendly suggestions."
 
-short_memory_stack = []
-
 user_input = "Suggest a name for an Indian restaurant"
 
-# Save user input
+# Save user to long-term memory
 save_message("user", user_input)
-short_memory_stack.append(f"USER: {user_input}")
 
+# Load memory layers
 long_memory = load_long_memory()
-short_memory = "\n".join(short_memory_stack[-5:])
+short_memory = load_short_memory()
 
+# Generate AI response
 response = memory_chain.invoke({
     "system_prompt": system_prompt,
     "core_memory": core_memory,
@@ -167,14 +219,14 @@ response = memory_chain.invoke({
 
 print("AI:", response)
 
-save_message("ai", response)
-short_memory_stack.append(f"AI: {response}")
+# Save AI response
+save_message("ai", response)        # Long-term memory
+save_short_term("ai", response)     # Short-term memory (last 3 only)
 
 
 # ==============================
 # TOOL EXAMPLE
 # ==============================
-
 print("\n===== TOOL EXAMPLE =====")
 
 @tool
@@ -207,8 +259,8 @@ Suggest a restaurant name and 5 menu items for {cuisine} food.
 )
 
 structured_chain = structured_prompt | llm | json_parser
-
 result = structured_chain.invoke({"cuisine": "Indian"})
+
 print("Structured Output:", result)
 
 
