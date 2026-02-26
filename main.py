@@ -10,14 +10,12 @@ from langchain_core.runnables import RunnableParallel
 from langchain_core.tools import tool
 from pydantic import BaseModel
 
-# ==============================
+
 # Load environment variables
-# ==============================
 load_dotenv()
 
-# ==============================
+
 # DATABASE SETUP
-# ==============================
 conn = sqlite3.connect("chat_history.db")
 cursor = conn.cursor()
 
@@ -44,9 +42,7 @@ CREATE TABLE IF NOT EXISTS short_term_memory (
 conn.commit()
 
 
-# ==============================
 # LONG TERM MEMORY FUNCTIONS
-# ==============================
 def save_message(role, message):
     cursor.execute(
         "INSERT INTO chat_history (role, message, timestamp) VALUES (?, ?, ?)",
@@ -64,9 +60,7 @@ def load_long_memory(limit=5):
     return "\n".join([f"{r[0].upper()}: {r[1]}" for r in rows])
 
 
-# ==============================
 # SHORT TERM MEMORY FUNCTIONS
-# ==============================
 def save_short_term(role, message):
     """
     Save only last 3 AI responses in short-term memory table
@@ -107,9 +101,7 @@ def view_history():
         print(f"[{row[2]}] {row[0].upper()}: {row[1]}")
 
 
-# ==============================
 # Create LLM
-# ==============================
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
     temperature=0.7,
@@ -118,9 +110,8 @@ llm = ChatGoogleGenerativeAI(
 
 parser = StrOutputParser()
 
-# ==============================
+
 # MEMORY STACK PROMPT TEMPLATE
-# ==============================
 memory_prompt = PromptTemplate(
     input_variables=[
         "system_prompt",
@@ -150,10 +141,7 @@ ASSISTANT:
 
 memory_chain = memory_prompt | llm | parser
 
-
-# ==============================
 # SIMPLE CHAIN
-# ==============================
 print("\n===== SIMPLE CHAIN =====")
 
 prompt = PromptTemplate(
@@ -166,9 +154,7 @@ response = chain.invoke({"cuisine": "Indian"})
 print("Simple Chain Output:", response)
 
 
-# ==============================
 # SEQUENTIAL CHAIN
-# ==============================
 print("\n===== SEQUENTIAL CHAIN =====")
 
 name_prompt = PromptTemplate(
@@ -191,9 +177,8 @@ print("Restaurant Name:", restaurant_name)
 print("Menu:", menu)
 
 
-# ==============================
+
 # MEMORY STACK CONVERSATION
-# ==============================
 print("\n===== MEMORY STACK CONVERSATION =====")
 
 system_prompt = "You are an expert Indian restaurant consultant."
@@ -220,13 +205,11 @@ response = memory_chain.invoke({
 print("AI:", response)
 
 # Save AI response
-save_message("ai", response)        # Long-term memory
-save_short_term("ai", response)     # Short-term memory (last 3 only)
+save_message("ai", response)        
+save_short_term("ai", response)   
 
 
-# ==============================
 # TOOL EXAMPLE
-# ==============================
 print("\n===== TOOL EXAMPLE =====")
 
 @tool
@@ -238,9 +221,7 @@ print("Tool Example (100 + 18% tax):",
       calculate_price.invoke({"price": 100, "tax": 18}))
 
 
-# ==============================
 # STRUCTURED OUTPUT
-# ==============================
 print("\n===== STRUCTURED OUTPUT (JSON) =====")
 
 class Restaurant(BaseModel):
@@ -264,9 +245,7 @@ result = structured_chain.invoke({"cuisine": "Indian"})
 print("Structured Output:", result)
 
 
-# ==============================
 # PARALLEL CHAIN
-# ==============================
 print("\n===== PARALLEL CHAIN =====")
 
 name_prompt = PromptTemplate(
@@ -297,10 +276,7 @@ parallel_chain = RunnableParallel(
 result = parallel_chain.invoke({"cuisine": "Indian"})
 print("Parallel Output:", result)
 
-
-# ==============================
 # VIEW DATABASE HISTORY
-# ==============================
 view_history()
 
 conn.close()
